@@ -208,11 +208,12 @@ int main(void)
     strcpy(b, "hello");
     strcpy(c, "salut");
 
-    printf("a = %p : %s 	|pour size = %zu\n", (void *)a, a, size_a);
-    printf("b = %p : %s 	|pour size = %zu\n", (void *)b, b, size_b);
-    printf("c = %p : %s 	|pour size = %zu\n", (void *)c, c, size_c);
+    printf("a = %p : %s         |pour size = %zu\n", (void *)a, a, size_a);
+    printf("b = %p : %s         |pour size = %zu\n", (void *)b, b, size_b);
+    printf("c = %p : %s         |pour size = %zu\n", (void *)c, c, size_c);
 
-    /* Etape 2 : libération dans le désordre, la liste doit rester triée */
+    /* Etape 2 : libération dans le désordre, la liste doit rester triée
+       et les blocs contigus doivent fusionner */
     printf("\n--- Test de free_3is ---\n");
     print_free_list();
 
@@ -220,16 +221,16 @@ int main(void)
     printf("Apres free(b) : ");
     print_free_list();
 
-    free_3is(c);
+    free_3is(c);  /* fusion avec b : 20 + 32 + 30 = 82 octets */
     printf("Apres free(c) : ");
     print_free_list();
 
-    free_3is(a);
+    free_3is(a);  /* fusion avec [b+c] : 10 + 32 + 82 = 124 octets */
     printf("Apres free(a) : ");
     print_free_list();
 
     /* Etape 3 : débordement volontaire
-       (taille 40 absente de la liste, pour avoir un bloc neuf) */
+       (d est découpé dans le bloc libre de 124 : il garde 124 - 40 - 32 = 52 octets) */
     printf("\n--- Test de debordement ---\n");
     size_t size_d = 40;
     char *d = malloc_3is(size_d);
@@ -244,16 +245,27 @@ int main(void)
     printf("Apres free(d) : ");
     print_free_list();
 
-    /* Etape 4 : réutilisation d'un bloc libéré */
+    /* Etape 4 : réutilisation d'un bloc libéré
+       (b a été fusionné, on en realloue un entre x et z, qui restent occupés) */
     printf("\n--- Test de reutilisation ---\n");
+
+    char *x = malloc_3is(size_b);  /* 52 < 20 + 32 + 1 : nouveau bloc */
+    b = malloc_3is(size_b);
+    char *z = malloc_3is(size_b);
+
+    free_3is(b);
+    printf("Apres free(b) : ");
+    print_free_list();
 
     char *e = malloc_3is(size_b);  /* même taille que b */
     printf("e = %p (b = %p) -> %s\n", (void *)e, (void *)b,
            e == b ? "bloc de b reutilise" : "nouveau bloc");
     print_free_list();
 
-    char *f = malloc_3is(15);  /* aucun bloc de 15, ni assez grand à découper */
-    printf("f = %p -> nouveau bloc attendu\n", (void *)f);
+    /* Pas de bloc de 15, mais le bloc de 52 peut être découpé :
+       il garde 52 - 15 - 32 = 5 octets */
+    char *f = malloc_3is(15);
+    printf("f = %p -> bloc decoupe attendu\n", (void *)f);
     print_free_list();
 
     /* Etape 5 : découpage d'un gros bloc libre */
@@ -268,6 +280,24 @@ int main(void)
        h garde 100 - 20 - 32 = 48 octets, g est placé à h + 48 + 8 + 24 */
     char *g = malloc_3is(20);
     printf("g = %p (attendu : h + 80 = %p)\n", (void *)g, (void *)(h + 80));
+    print_free_list();
+
+    /* Etape 6 : fusion des blocs libres adjacents */
+    printf("\n--- Test de fusion ---\n");
+
+    free_3is(g);  /* fusion avec le reste de h : 48 + 32 + 20 = 100 octets */
+    printf("Apres free(g) : ");
+    print_free_list();
+
+    /* x, e, z et h sont contigus : on libère x et z, puis e entre les deux.
+       e fusionne avec le suivant ET le précédent : 20 + 32 + 20 + 32 + 152 = 256 octets */
+    free_3is(x);
+    free_3is(z);
+    printf("Apres free(x), free(z) : ");
+    print_free_list();
+
+    free_3is(e);
+    printf("Apres free(e) : ");
     print_free_list();
 
     return EXIT_SUCCESS;
