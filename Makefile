@@ -1,12 +1,12 @@
 CC = gcc
-SRC = main.c malloc_3is.c free_3is.c
+SRC = tp2.c
 BIN = tp2
 
 CFLAGS += -Wall -Wextra -g
 
 all: $(BIN)
 
-$(BIN): $(SRC) malloc_3is.h free_3is.h
+$(BIN): $(SRC)
 	$(CC) $(CFLAGS) $(SRC) -o $(BIN)
 
 clean:
