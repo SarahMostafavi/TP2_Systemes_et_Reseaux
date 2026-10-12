@@ -13,13 +13,13 @@ typedef struct HEADER_TAG {
 } HEADER;
 
 
-#define MAGIC_NUMBER 0xBADA110CBADA110CL
+#define MAGIC_NUMBER ((long)0xBADA110CBADA110CUL)
 
 /* Tête de la liste chaînée des blocs libres, triée par adresse croissante. */
 static HEADER *free_list = NULL;
 
 
-// Réecriture malloc
+// Réecriture du  malloc
 void *malloc_3is(size_t size){
         // malloc renvoie NULL si size est 0
         if (size == 0){
@@ -49,8 +49,27 @@ void *malloc_3is(size_t size){
 
         return memory_bloc;
 }
+/* Vérifie les deux magic numbers d'un bloc.
+   Renvoie 1 si le bloc est intact, 0 s'il y a eu un débordement */
+static int check_magic(HEADER *header)
+{
+    char *memory_bloc = (char *)(header + 1);                    /* début du memory bloc */
+    long *end_magic = (long *)(memory_bloc + header->bloc_size); /* juste après le memory bloc */
 
-//Réecriture free
+    if (header->magic_number != MAGIC_NUMBER) {
+        fprintf(stderr, "Erreur : header corrompu (bloc %p)\n", (void *)memory_bloc);
+        return 0;
+    }
+    if (*end_magic != MAGIC_NUMBER) {
+        fprintf(stderr, "Erreur : debordement detecte (bloc %p)\n", (void *)memory_bloc);
+        return 0;
+    }
+    return 1;
+}
+
+
+
+//Reecriture du free
 void free_3is(void *ptr)
 {
     /* free(NULL) ne fait rien */
@@ -59,6 +78,11 @@ void free_3is(void *ptr)
 
     /* ptr pointe sur le memory bloc : le header est juste avant */
     HEADER *header = (HEADER *)ptr - 1;
+
+
+    if (!check_magic(header))
+        return;
+
 
     /* Cas 1 : liste vide, ou bloc situé avant le premier bloc libre
        -> insertion en tête de liste */
@@ -89,6 +113,7 @@ void print_free_list(void)
         printf(" [%p, %zu bytes]", (void *)(current + 1), current->bloc_size);
     printf("\n");
 }
+
 
 
 
@@ -132,8 +157,21 @@ int main(void) {
     free_3is(a);
     printf("Apres free(a) : ");
     print_free_list();      
+    // Detection des debordements
+    printf("\n--- Test de debordement ---\n");
+    size_t size_d = 20;
+    char *d = malloc_3is(size_d);
+    if (d == NULL) {
+        printf("malloc_3is failed\n");
+        return EXIT_FAILURE;
+    }
 
+    // On ecrit 8 octets de trop : le magic number de fin est ecrase
+    memset(d, 'X', size_d + sizeof(long));
 
+    free_3is(d);            
+    printf("Apres free(d) : ");
+    print_free_list();     
 
     return EXIT_SUCCESS;
 }
