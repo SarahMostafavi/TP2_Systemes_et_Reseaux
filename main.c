@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include "free_3is.h"
 int main(void) {
     // Fait 3 allocations
     size_t size_a = 10;
@@ -27,6 +27,26 @@ int main(void) {
     printf("a = %p : %s 	|pour size = %ld\n", (void *)a, a, size_a);
     printf("b = %p : %s 	|pour size = %ld\n", (void *)b, b, size_b);
     printf("c = %p : %s 	|pour size = %ld\n", (void *)c, c, size_c);
+
+
+
+     // Liberation 
+    printf("\n--- Test de free_3is ---\n");
+    print_free_list();     
+
+    free_3is(b);
+    printf("Apres free(b) : ");
+    print_free_list();      
+
+    free_3is(c);
+    printf("Apres free(c) : ");
+    print_free_list();      
+
+    free_3is(a);
+    printf("Apres free(a) : ");
+    print_free_list();      
+
+
 
     return EXIT_SUCCESS;
 }
