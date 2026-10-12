@@ -11,6 +11,8 @@ typedef struct HEADER_TAG {
 } HEADER;
 
 #define MAGIC_NUMBER ((long)0xBADA110CBADA110CUL)
+/* Place prise par un header et un magic de fin, en plus du memory bloc */
+#define BLOC_OVERHEAD (sizeof(HEADER) + sizeof(long))
 
 /* Liste des blocs libres, triée par adresse croissante */
 static HEADER *free_list = NULL;
@@ -34,8 +36,36 @@ static int check_magic(HEADER *header)
     return 1;
 }
 
-/* Retire de la liste un bloc libre de taille size et le renvoie,
-   ou renvoie NULL s'il n'y en a pas */
+/* Écrit le magic number juste après le memory bloc */
+static void set_end_magic(HEADER *header)
+{
+    char *memory_bloc = (char *)(header + 1);
+    long *end_magic = (long *)(memory_bloc + header->bloc_size);
+    *end_magic = MAGIC_NUMBER;
+}
+
+/* Découpe un bloc libre : sa fin devient un bloc de taille size, renvoyé.
+   Le début reste dans la liste avec une taille diminuée. */
+static HEADER *split_bloc(HEADER *free_bloc, size_t size)
+{
+    free_bloc->bloc_size -= size + BLOC_OVERHEAD;
+    set_end_magic(free_bloc);
+
+    /* Le nouveau bloc commence juste après le magic de fin du bloc libre */
+    HEADER *new_bloc = (HEADER *)((char *)(free_bloc + 1)
+                                  + free_bloc->bloc_size + sizeof(long));
+    new_bloc->ptr_next = NULL;
+    new_bloc->bloc_size = size;
+    new_bloc->magic_number = MAGIC_NUMBER;
+    set_end_magic(new_bloc);
+
+    return new_bloc;
+}
+
+/* Cherche un bloc libre utilisable pour size octets :
+   - taille exacte : il est retiré de la liste et renvoyé
+   - assez grand : il est découpé (voir split_bloc)
+   Renvoie NULL si aucun bloc ne convient. */
 static HEADER *take_free_bloc(size_t size)
 {
     HEADER *previous = NULL;
@@ -51,6 +81,10 @@ static HEADER *take_free_bloc(size_t size)
             current->ptr_next = NULL;
             return current;
         }
+        /* Assez grand pour qu'il reste au moins 1 octet libre après découpage */
+        if (current->bloc_size >= size + BLOC_OVERHEAD + 1)
+            return split_bloc(current, size);
+
         previous = current;
         current = current->ptr_next;
     }
@@ -63,7 +97,7 @@ void *malloc_3is(size_t size)
         return NULL;
     }
 
-    /* On réutilise un bloc libre de même taille s'il en existe un */
+    /* On réutilise ou on découpe un bloc libre s'il en existe un */
     HEADER *reused = take_free_bloc(size);
     if (reused != NULL && check_magic(reused)) {
         return reused + 1;
@@ -79,12 +113,9 @@ void *malloc_3is(size_t size)
     header->ptr_next = NULL;
     header->bloc_size = size;
     header->magic_number = MAGIC_NUMBER;
+    set_end_magic(header);
 
-    char *memory_bloc = (char *)(header + 1);
-    long *end_magic = (long *)(memory_bloc + size);
-    *end_magic = MAGIC_NUMBER;
-
-    return memory_bloc;
+    return header + 1;
 }
 
 void free_3is(void *ptr)
@@ -189,8 +220,22 @@ int main(void)
            e == b ? "bloc de b reutilise" : "nouveau bloc");
     print_free_list();
 
-    char *f = malloc_3is(15);  /* aucune taille 15 dans la liste */
+    char *f = malloc_3is(15);  /* aucun bloc de 15, ni assez grand à découper */
     printf("f = %p -> nouveau bloc attendu\n", (void *)f);
+    print_free_list();
+
+    /* Etape 5 : découpage d'un gros bloc libre */
+    printf("\n--- Test de decoupage ---\n");
+
+    char *h = malloc_3is(100);
+    free_3is(h);
+    printf("Apres free(h) : ");
+    print_free_list();
+
+    /* Pas de bloc de 20, mais h (100) peut être découpé :
+       h garde 100 - 20 - 32 = 48 octets, g est placé à h + 48 + 8 + 24 */
+    char *g = malloc_3is(20);
+    printf("g = %p (attendu : h + 80 = %p)\n", (void *)g, (void *)(h + 80));
     print_free_list();
 
     return EXIT_SUCCESS;
