@@ -11,13 +11,16 @@ typedef struct HEADER_TAG {
 } HEADER;
 
 #define MAGIC_NUMBER ((long)0xBADA110CBADA110CUL)
-/* Place prise par un header et un magic de fin, en plus du memory bloc */
-#define BLOC_OVERHEAD (sizeof(HEADER) + sizeof(long))
+#define BLOC_OVERHEAD (sizeof(HEADER) + sizeof(long))	/* Place prise par un header et un magic de fin*/
 
-/* Liste des blocs libres, triée par adresse croissante */
-static HEADER *free_list = NULL;
+static HEADER *free_list = NULL; /* Liste des blocs libres, triée par adresse croissante */
 
-/* Renvoie 1 si les deux magic numbers du bloc sont intacts, 0 sinon */
+
+
+
+
+/* Fonction de vérification des débordements de mémoire 
+  Renvoie 1 si les deux magic numbers du bloc sont intacts, 0 sinon */
 static int check_magic(HEADER *header)
 {
     char *memory_bloc = (char *)(header + 1);
@@ -36,7 +39,8 @@ static int check_magic(HEADER *header)
     return 1;
 }
 
-/* Écrit le magic number juste après le memory bloc */
+
+/* Fonction d'écriture du magic number juste après le memory bloc */
 static void set_end_magic(HEADER *header)
 {
     char *memory_bloc = (char *)(header + 1);
@@ -91,6 +95,26 @@ static HEADER *take_free_bloc(size_t size)
     return NULL;
 }
 
+
+/* Fonction qui détermine si deux blocs sont adjacents à partir de leurs header 
+   Renvoie si le bloc b commence juste après la fin du bloc a*/
+static int are_blocs_adjacent(HEADER *a, HEADER *b){
+    char *end_of_a = (char *)(a + 1) + a->bloc_size + sizeof(long);
+    return end_of_a == (char *)b;
+}
+
+/* Fonction pour absorber le bloc suivant dans le bloc en entrée. 
+   Le header et le magic de fin du bloc absorbé deviennent de la mémoire utilisable.
+   Le magic de fin de next devient celui du bloc fusionné. */
+static void merge_bloc_with_next(HEADER *bloc)
+{
+    HEADER *next = bloc->ptr_next;
+
+    bloc->bloc_size += BLOC_OVERHEAD + next->bloc_size;
+    bloc->ptr_next = next->ptr_next;
+}
+
+/* Réecriture de la fonction malloc*/
 void *malloc_3is(size_t size)
 {
     if (size == 0) {
@@ -118,6 +142,7 @@ void *malloc_3is(size_t size)
     return header + 1;
 }
 
+/* Réecriture de la fonction free*/
 void free_3is(void *ptr)
 {
     if (ptr == NULL)
@@ -145,8 +170,15 @@ void free_3is(void *ptr)
     /* On relie d'abord le bloc au suivant pour ne pas perdre son adresse */
     header->ptr_next = current->ptr_next;
     current->ptr_next = header;
+
+    /* Fusion avec le suivant, puis avec le précédent */
+    if (header->ptr_next != NULL && are_blocs_adjacent(header, header->ptr_next))
+        merge_bloc_with_next(header);
+    if (are_blocs_adjacent(current, header))
+        merge_bloc_with_next(current);
 }
 
+/* Affiche la liste de blocs free */
 void print_free_list(void)
 {
     printf("Free list:");
